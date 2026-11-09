@@ -202,7 +202,7 @@ jobs:
           grep -q "PlugIns/ShareExtension.appex" ipa-contents.txt \
             || { echo "::error::ShareExtension.appex missing from the IPA"; exit 1; }
 
-          IPA_SIZE=$(du -h "$IPA" | cut -f1)
+          IPA_SIZE=$(du -h "$IPA" | cut -f1 | tr -d ' ')
           IPA_SHA=$(shasum -a 256 "$IPA" | cut -d' ' -f1)
           ls -lh "$IPA"
           echo "size=$IPA_SIZE" >> "$GITHUB_OUTPUT"
