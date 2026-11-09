@@ -46,7 +46,9 @@ jobs:
           BUILD_NUMBER=$(sed -n 's/^version: [0-9]*\.[0-9]*\.[0-9]*+\([0-9]*\).*/\1/p' app/pubspec.yaml)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "tag=ios14-v$VERSION-r${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # One rolling release per version: every build moves this tag to the new
+          # commit and replaces the asset, so the Releases page stays tidy.
+          echo "tag=ios14-v$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building LocalSend $VERSION ($BUILD_NUMBER)"
 
       # The pinned plugins are from late 2026 and already use iOS 26 SDK APIs
@@ -218,6 +220,7 @@ jobs:
           IPA_SHA: ${{ steps.package.outputs.sha256 }}
           APP_MIN_OS: ${{ steps.package.outputs.app_min_os }}
           APPEX_MIN_OS: ${{ steps.package.outputs.appex_min_os }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
 
@@ -234,6 +237,7 @@ jobs:
             echo "| 主 App 最低系统 | iOS $APP_MIN_OS |"
             echo "| 分享扩展最低系统 | iOS $APPEX_MIN_OS |"
             echo "| 工具链 | Flutter 3.41.9 + Xcode 26.6 |"
+            echo "| 构建编号 | #${RUN_NUMBER} |"
             echo "| 提交 | \`${GITHUB_SHA:0:10}\` |"
             echo "| SHA-256 | \`$IPA_SHA\` |"
             echo
@@ -271,11 +275,21 @@ jobs:
 
           cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
+      # The release tag is rolling, so point it at the commit that was just built.
+      # The credentials persisted by actions/checkout are reused for the push.
+      - name: Move the release tag to this build
+        env:
+          TAG: ${{ steps.app_version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git tag -f "${TAG}" "${GITHUB_SHA}"
+          git push -f origin "refs/tags/${TAG}"
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.app_version.outputs.tag }}
-          name: LocalSend ${{ steps.app_version.outputs.version }} iOS 14 (arm64, unsigned) #${{ github.run_number }}
+          name: LocalSend ${{ steps.app_version.outputs.version }} iOS 14 (arm64, unsigned)
           body_path: release-notes.md
           files: app/LocalSend-${{ steps.app_version.outputs.version }}-ios-arm64-unsigned.ipa
           prerelease: false
