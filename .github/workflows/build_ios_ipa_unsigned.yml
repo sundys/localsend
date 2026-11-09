@@ -162,6 +162,7 @@ jobs:
           APPEX_MIN_OS=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APPEX_DIR/Info.plist")
           APPEX_POINT=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$APPEX_DIR/Info.plist")
           APPEX_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APPEX_DIR/Info.plist")
+          APPEX_RULE=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionActivationRule" "$APPEX_DIR/Info.plist")
           APP_ARCHS=$(lipo -archs "$APP_DIR/Runner")
           APPEX_ARCHS=$(lipo -archs "$APPEX_DIR/ShareExtension")
 
@@ -173,6 +174,7 @@ jobs:
           echo "architectures:    $APPEX_ARCHS"
           echo "display name:     $APPEX_NAME"
           echo "extension point:  $APPEX_POINT"
+          echo "activation rule:  $APPEX_RULE"
 
           # Fail loudly instead of shipping an IPA that silently drops out of the
           # iOS 14 share sheet again.
@@ -182,6 +184,11 @@ jobs:
           done
           [ "$APPEX_POINT" = "com.apple.share-services" ] \
             || { echo "::error::Unexpected extension point: $APPEX_POINT"; exit 1; }
+          # The dictionary form of NSExtensionActivationRule hides the extension when
+          # a share provides an item type the dictionary does not cover (screenshots
+          # do), so the build must ship the predicate form.
+          echo "$APPEX_RULE" | grep -q 'UTI-CONFORMS-TO "public.image"' \
+            || { echo "::error::Share extension activation rule is not the expected predicate: $APPEX_RULE"; exit 1; }
           [ "$APP_ARCHS" = "arm64" ] && [ "$APPEX_ARCHS" = "arm64" ] \
             || { echo "::error::Expected arm64-only binaries, got app=$APP_ARCHS appex=$APPEX_ARCHS"; exit 1; }
 
@@ -246,6 +253,7 @@ jobs:
             echo "- 基于 LocalSend ${VERSION}，**未签名**，用 TrollStore 安装即可（无需 Apple 开发者账号）。"
             echo "- 修复 iOS 14 系统分享菜单里找不到 LocalSend 的问题：Flutter ≥ 3.47 的引擎最低要求 iOS 15，会把主 App 与分享扩展的 \`MinimumOSVersion\` 抬到 15.0，iOS 14 因此不会注册该分享扩展。本构建固定使用引擎最低 iOS 13.0 的 Flutter 3.41.9，并让分享扩展保持 14.0。"
             echo "- 分享菜单中的应用名从 \`ShareExtension\` 改为 **LocalSend**。"
+            echo "- 修复从**截图预览**分享时分享菜单里没有 LocalSend 的问题：分享扩展的激活规则由字典式（只覆盖固定类型，且要求匹配分享内容里的每一个 item）改为 predicate（按 UTI 一致性匹配任意附件）。"
             echo "- 已写入 app group / multicast entitlements（分享回传与局域网发现需要）。"
             echo
             echo "### 修改摘要"

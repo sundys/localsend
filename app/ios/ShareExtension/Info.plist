@@ -9,22 +9,14 @@
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<key>NSExtensionActivationRule</key>
-			<dict>
-				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
-				<integer>999</integer>
-				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
-				<integer>999</integer>
-				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-				<integer>999</integer>
-				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>999</integer>
-				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
-				<integer>999</integer>
-				<key>NSExtensionActivationSupportsAttachmentsWithMaxCount</key>
-				<integer>999</integer>
-				<key>NSExtensionActivationSupportsText</key>
-				<true/>
-			</dict>
+			<!--
+				Predicate rule instead of the NSExtensionActivationSupports* dictionary.
+				A dictionary rule only lists the extension when it supports *every*
+				activity item, so sharing a screenshot (the screenshot UI hands over a
+				different item combination than the Photos app) silently hides LocalSend.
+				Matching on UTI conformance for any attachment fixes that.
+			-->
+			<string>SUBQUERY(extensionItems, $extensionItem, SUBQUERY($extensionItem.attachments, $attachment, (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.video" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.text" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.item")).@count > 0).@count > 0</string>
 			<key>PHSupportedMediaTypes</key>
 			<array>
 				<string>Video</string>
