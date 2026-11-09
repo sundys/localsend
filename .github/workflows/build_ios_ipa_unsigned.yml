@@ -239,7 +239,7 @@ jobs:
             echo
             echo "### 版本说明"
             echo
-            echo "- 基于 LocalSend $VERSION，**未签名**，用 TrollStore 安装即可（无需 Apple 开发者账号）。"
+            echo "- 基于 LocalSend ${VERSION}，**未签名**，用 TrollStore 安装即可（无需 Apple 开发者账号）。"
             echo "- 修复 iOS 14 系统分享菜单里找不到 LocalSend 的问题：Flutter ≥ 3.47 的引擎最低要求 iOS 15，会把主 App 与分享扩展的 \`MinimumOSVersion\` 抬到 15.0，iOS 14 因此不会注册该分享扩展。本构建固定使用引擎最低 iOS 13.0 的 Flutter 3.41.9，并让分享扩展保持 14.0。"
             echo "- 分享菜单中的应用名从 \`ShareExtension\` 改为 **LocalSend**。"
             echo "- 已写入 app group / multicast entitlements（分享回传与局域网发现需要）。"
@@ -264,9 +264,9 @@ jobs:
             echo
             echo "### 构建校验"
             echo
-            echo "- \`Runner.app\` MinimumOSVersion = $APP_MIN_OS，arm64。"
-            echo "- \`ShareExtension.appex\` MinimumOSVersion = $APPEX_MIN_OS，arm64，\`NSExtensionPointIdentifier = com.apple.share-services\`。"
-            echo "- 构建日志：$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- \`Runner.app\` MinimumOSVersion = ${APP_MIN_OS}，arm64。"
+            echo "- \`ShareExtension.appex\` MinimumOSVersion = ${APPEX_MIN_OS}，arm64，\`NSExtensionPointIdentifier = com.apple.share-services\`。"
+            echo "- 构建日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           } > release-notes.md
 
           cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
