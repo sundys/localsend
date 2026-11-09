@@ -162,7 +162,7 @@ jobs:
           APPEX_MIN_OS=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APPEX_DIR/Info.plist")
           APPEX_POINT=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$APPEX_DIR/Info.plist")
           APPEX_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APPEX_DIR/Info.plist")
-          APPEX_RULE=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionActivationRule" "$APPEX_DIR/Info.plist")
+          APPEX_RULE=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionAttributes:NSExtensionActivationRule" "$APPEX_DIR/Info.plist")
           APP_ARCHS=$(lipo -archs "$APP_DIR/Runner")
           APPEX_ARCHS=$(lipo -archs "$APPEX_DIR/ShareExtension")
 
