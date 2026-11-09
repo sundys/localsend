@@ -6,6 +6,9 @@
 # Rust workspace build output
 /target/
 
+# Stable cargo target dir used by CI (see CARGOKIT_TARGET_TEMP_DIR_OVERRIDE)
+/.cargokit_target/
+
 # Linux AppImage
 /app/AppDir
 /app/appimage-build

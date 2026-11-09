@@ -26,13 +26,15 @@ export CARGOKIT_CONFIGURATION=$CONFIGURATION
 export CARGOKIT_MANIFEST_DIR=$PODS_TARGET_SRCROOT/$1
 
 # Temporary directory for build artifacts.
-export CARGOKIT_TARGET_TEMP_DIR=$TARGET_TEMP_DIR
+# CARGOKIT_TARGET_TEMP_DIR_OVERRIDE lets CI point this at a stable directory so
+# the cargo artifacts can be cached between builds.
+export CARGOKIT_TARGET_TEMP_DIR=${CARGOKIT_TARGET_TEMP_DIR_OVERRIDE:-$TARGET_TEMP_DIR}
 
 # Output directory for final artifacts.
 export CARGOKIT_OUTPUT_DIR=$PODS_CONFIGURATION_BUILD_DIR/$PRODUCT_NAME
 
 # Directory to store built tool artifacts.
-export CARGOKIT_TOOL_TEMP_DIR=$TARGET_TEMP_DIR/build_tool
+export CARGOKIT_TOOL_TEMP_DIR=$CARGOKIT_TARGET_TEMP_DIR/build_tool
 
 # Directory inside root project. Not necessarily the top level directory of root project.
 export CARGOKIT_ROOT_PROJECT_DIR=$SRCROOT
