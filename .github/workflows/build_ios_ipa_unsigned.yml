@@ -1,0 +1,163 @@
+name: Build iOS IPA (unsigned, arm64)
+
+# Builds an unsigned, arm64-only IPA for TrollStore installation on iOS 14.
+#
+# Why Flutter 3.41.9 and not the version pinned in .fvmrc?
+# Flutter >= 3.47 ships an engine built with `ios_deployment_target = "15.0"`
+# (engine/src/build/config/darwin/darwin_sdk.gni), so every app built with it
+# declares MinimumOSVersion 15.0. iOS 14 refuses to load such binaries and the
+# share extension is never registered with the share sheet.
+# 3.41.9 is the last release whose engine still targets iOS 13.0, which is what
+# LocalSend v1.18.2 (the last version supporting iOS 13/14) was built with.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ios14-support
+
+env:
+  FLUTTER_VERSION: "3.41.9"
+
+jobs:
+  build_ipa:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read app version
+        id: app_version
+        run: |
+          VERSION=$(sed -n 's/^version: \([0-9]*\.[0-9]*\.[0-9]*\)+.*/\1/p' app/pubspec.yaml)
+          BUILD_NUMBER=$(sed -n 's/^version: [0-9]*\.[0-9]*\.[0-9]*+\([0-9]*\).*/\1/p' app/pubspec.yaml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Building LocalSend $VERSION ($BUILD_NUMBER)"
+
+      # Xcode 16.x is the newest Xcode that still accepts deployment targets below
+      # iOS 15, which is required for the iOS 14 build. macos-15 ships Xcode 16.4.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.97.1 --profile default
+          rustup target add aarch64-apple-ios --toolchain 1.97.1
+          rustup show
+          xcodebuild -version
+
+      # TrollStore re-signs the app with ldid and keeps the entitlements it finds
+      # in the existing signature. The share extension needs the app group
+      # (UserDefaults(suiteName:) is force-unwrapped by share_handler), so sign
+      # both binaries with their entitlements before packaging.
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build iOS app (unsigned, arm64 only)
+        working-directory: app
+        env:
+          # FLUTTER_XCODE_* variables are forwarded to xcodebuild as build settings.
+          # ARCHS=arm64 keeps the build to the single device slice (no x86_64/arm64e).
+          FLUTTER_XCODE_ARCHS: arm64
+          FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "NO"
+          # The ShareExtension target does not include Generated.xcconfig, so its
+          # Info.plist cannot resolve $(FLUTTER_BUILD_NAME)/$(FLUTTER_BUILD_NUMBER).
+          # Passing them as build settings makes the extension version match the app.
+          FLUTTER_XCODE_FLUTTER_BUILD_NAME: ${{ steps.app_version.outputs.version }}
+          FLUTTER_XCODE_FLUTTER_BUILD_NUMBER: ${{ steps.app_version.outputs.build_number }}
+        run: flutter build ios --release --no-codesign
+
+      - name: Verify and package unsigned IPA
+        working-directory: app
+        env:
+          VERSION: ${{ steps.app_version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.app_version.outputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          APP_DIR="build/ios/iphoneos/Runner.app"
+          APPEX_DIR="$APP_DIR/PlugIns/ShareExtension.appex"
+
+          test -d "$APP_DIR" || { echo "::error::Runner.app was not built"; exit 1; }
+          test -d "$APPEX_DIR" || { echo "::error::ShareExtension.appex is not embedded"; exit 1; }
+
+          # Keep the extension version in sync with the host app (iOS rejects
+          # extensions whose version does not match the containing app).
+          for plist in "$APP_DIR/Info.plist" "$APPEX_DIR/Info.plist"; do
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$plist" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$plist"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$plist" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD_NUMBER" "$plist"
+          done
+
+          # This is the label iOS shows in the share sheet.
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName LocalSend" "$APPEX_DIR/Info.plist" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string LocalSend" "$APPEX_DIR/Info.plist"
+
+          echo "--- Runner.app ---"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_DIR/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_DIR/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APP_DIR/Info.plist"
+          lipo -archs "$APP_DIR/Runner"
+
+          echo "--- ShareExtension.appex ---"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APPEX_DIR/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APPEX_DIR/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$APPEX_DIR/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APPEX_DIR/Info.plist"
+          lipo -archs "$APPEX_DIR/ShareExtension"
+
+          # Fail loudly instead of shipping an IPA that silently drops out of the
+          # iOS 14 share sheet again.
+          for plist in "$APP_DIR/Info.plist" "$APPEX_DIR/Info.plist"; do
+            MIN_OS=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$plist")
+            awk -v min="$MIN_OS" -v max="14.0" 'BEGIN { exit (min + 0 > max + 0) ? 1 : 0 }' \
+              || { echo "::error::$plist requires iOS $MIN_OS, which is newer than iOS 14.0"; exit 1; }
+          done
+
+          ARCHS=$(lipo -archs "$APP_DIR/Runner")
+          if [ "$ARCHS" != "arm64" ]; then
+            echo "::error::Expected an arm64-only binary, got: $ARCHS"
+            exit 1
+          fi
+
+          # Embed the app group (and multicast) entitlements. TrollStore preserves
+          # the entitlements of the signature it re-signs.
+          ldid -S"$GITHUB_WORKSPACE/app/ios/Runner/Runner.entitlements" "$APP_DIR/Runner"
+          ldid -S"$GITHUB_WORKSPACE/app/ios/ShareExtension/ShareExtension.entitlements" "$APPEX_DIR/ShareExtension"
+          RUNNER_ENTS=$(ldid -e "$APP_DIR/Runner")
+          APPEX_ENTS=$(ldid -e "$APPEX_DIR/ShareExtension")
+          echo "$RUNNER_ENTS" | grep -q "group.org.localsend.localsendApp" \
+            || { echo "::error::app group entitlement missing on Runner"; exit 1; }
+          echo "$APPEX_ENTS" | grep -q "group.org.localsend.localsendApp" \
+            || { echo "::error::app group entitlement missing on ShareExtension"; exit 1; }
+
+          rm -rf Payload "LocalSend-$VERSION-ios-arm64-unsigned.ipa"
+          mkdir Payload
+          cp -R "$APP_DIR" Payload/Runner.app
+          zip -qry "LocalSend-$VERSION-ios-arm64-unsigned.ipa" Payload
+          unzip -l "LocalSend-$VERSION-ios-arm64-unsigned.ipa" > ipa-contents.txt
+          grep -q "PlugIns/ShareExtension.appex" ipa-contents.txt \
+            || { echo "::error::ShareExtension.appex missing from the IPA"; exit 1; }
+          ls -lh "LocalSend-$VERSION-ios-arm64-unsigned.ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v6
+        with:
+          name: localsend-ios-arm64-unsigned
+          path: app/LocalSend-*-ios-arm64-unsigned.ipa
+          if-no-files-found: error
